@@ -1,5 +1,5 @@
 /*
- * Copyright 2021 Google Inc. All rights reserved.
+ * Copyright 2024 Google Inc. All rights reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,19 +16,24 @@
 
 import Foundation
 
+/// NativeObject is a protocol that all of the `Object-API` generated code should be
+/// conforming to since it allows developers the ease of use to pack and unpack their
+/// Flatbuffers objects
 public protocol NativeObject {}
 
 extension NativeObject {
 
-  /// Serialize is a helper function that serailizes the data from the Object API to a bytebuffer directly th
+  /// Serialize is a helper function that serializes the data from the Object API to a bytebuffer directly th
   /// - Parameter type: Type of the Flatbuffer object
   /// - Returns: returns the encoded sized ByteBuffer
-  public func serialize<T: ObjectAPIPacker>(type: T.Type) -> ByteBuffer where T.T == Self {
+  public func serialize<T: ObjectAPIPacker>(type: T.Type) -> ByteBuffer
+    where T.T == Self
+  {
     var builder = FlatBufferBuilder(initialSize: 1024)
     return serialize(builder: &builder, type: type.self)
   }
 
-  /// Serialize is a helper function that serailizes the data from the Object API to a bytebuffer directly.
+  /// Serialize is a helper function that serializes the data from the Object API to a bytebuffer directly.
   ///
   /// - Parameters:
   ///   - builder: A FlatBufferBuilder
@@ -36,7 +41,10 @@ extension NativeObject {
   /// - Returns: returns the encoded sized ByteBuffer
   /// - Note: The `serialize(builder:type)` can be considered as a function that allows you to create smaller builder instead of the default `1024`.
   ///  It can be considered less expensive in terms of memory allocation
-  public func serialize<T: ObjectAPIPacker>(builder: inout FlatBufferBuilder, type: T.Type) -> ByteBuffer where T.T == Self {
+  public func serialize<T: ObjectAPIPacker>(
+    builder: inout FlatBufferBuilder,
+    type: T.Type) -> ByteBuffer where T.T == Self
+  {
     var s = self
     let root = type.pack(&builder, obj: &s)
     builder.finish(offset: root)

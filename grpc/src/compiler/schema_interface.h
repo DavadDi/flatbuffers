@@ -19,14 +19,13 @@
 #ifndef GRPC_INTERNAL_COMPILER_SCHEMA_INTERFACE_H
 #define GRPC_INTERNAL_COMPILER_SCHEMA_INTERFACE_H
 
+#include <map>
 #include <memory>
 #include <vector>
 
-#include "src/compiler/config.h"
-
 #ifndef GRPC_CUSTOM_STRING
-#  include <string>
-#  define GRPC_CUSTOM_STRING std::string
+#include <string>
+#define GRPC_CUSTOM_STRING std::string
 #endif
 
 namespace grpc {
@@ -56,10 +55,10 @@ struct Method : public CommentHolder {
   virtual grpc::string output_type_name() const = 0;
 
   virtual bool get_module_and_message_path_input(
-      grpc::string *str, grpc::string generator_file_name,
+      grpc::string* str, grpc::string generator_file_name,
       bool generate_in_pb2_grpc, grpc::string import_prefix) const = 0;
   virtual bool get_module_and_message_path_output(
-      grpc::string *str, grpc::string generator_file_name,
+      grpc::string* str, grpc::string generator_file_name,
       bool generate_in_pb2_grpc, grpc::string import_prefix) const = 0;
 
   virtual std::vector<grpc::string> get_input_namespace_parts() const = 0;
@@ -90,10 +89,10 @@ struct Service : public CommentHolder {
 struct Printer {
   virtual ~Printer() {}
 
-  virtual void Print(const std::map<grpc::string, grpc::string> &vars,
-                     const char *template_string) = 0;
-  virtual void Print(const char *string) = 0;
-  virtual void SetIndentationSize(const int size) = 0;
+  virtual void Print(const std::map<grpc::string, grpc::string>& vars,
+                     const char* template_string) = 0;
+  virtual void Print(const char* string) = 0;
+  virtual void SetIndentationSize(const size_t size) = 0;
   virtual void Indent() = 0;
   virtual void Outdent() = 0;
 };
@@ -113,7 +112,7 @@ struct File : public CommentHolder {
   virtual std::unique_ptr<const Service> service(int i) const = 0;
 
   virtual std::unique_ptr<Printer> CreatePrinter(
-      grpc::string *str, const char indentation_type = ' ') const = 0;
+      grpc::string* str, const char indentation_type = ' ') const = 0;
 };
 }  // namespace grpc_generator
 

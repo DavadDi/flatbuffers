@@ -2,10 +2,21 @@
 
 package MyGame.Example;
 
-import java.nio.*;
-import java.lang.*;
-import java.util.*;
-import com.google.flatbuffers.*;
+import com.google.flatbuffers.BaseVector;
+import com.google.flatbuffers.BooleanVector;
+import com.google.flatbuffers.ByteVector;
+import com.google.flatbuffers.Constants;
+import com.google.flatbuffers.DoubleVector;
+import com.google.flatbuffers.FlatBufferBuilder;
+import com.google.flatbuffers.FloatVector;
+import com.google.flatbuffers.IntVector;
+import com.google.flatbuffers.LongVector;
+import com.google.flatbuffers.ShortVector;
+import com.google.flatbuffers.StringVector;
+import com.google.flatbuffers.Struct;
+import com.google.flatbuffers.UnionVector;
+import java.nio.ByteBuffer;
+import java.nio.ByteOrder;
 
 @SuppressWarnings("unused")
 public final class StructOfStructs extends Struct {
@@ -22,15 +33,15 @@ public final class StructOfStructs extends Struct {
   public static int createStructOfStructs(FlatBufferBuilder builder, long a_id, long a_distance, short b_a, byte b_b, long c_id, long c_distance) {
     builder.prep(4, 20);
     builder.prep(4, 8);
-    builder.putInt((int)c_distance);
-    builder.putInt((int)c_id);
+    builder.putInt((int) c_distance);
+    builder.putInt((int) c_id);
     builder.prep(2, 4);
     builder.pad(1);
     builder.putByte(b_b);
     builder.putShort(b_a);
     builder.prep(4, 8);
-    builder.putInt((int)a_distance);
-    builder.putInt((int)a_id);
+    builder.putInt((int) a_distance);
+    builder.putInt((int) a_id);
     return builder.offset();
   }
 
@@ -39,6 +50,33 @@ public final class StructOfStructs extends Struct {
 
     public StructOfStructs get(int j) { return get(new StructOfStructs(), j); }
     public StructOfStructs get(StructOfStructs obj, int j) {  return obj.__assign(__element(j), bb); }
+  }
+  public StructOfStructsT unpack() {
+    StructOfStructsT _o = new StructOfStructsT();
+    unpackTo(_o);
+    return _o;
+  }
+  public void unpackTo(StructOfStructsT _o) {
+    a().unpackTo(_o.getA());
+    b().unpackTo(_o.getB());
+    c().unpackTo(_o.getC());
+  }
+  public static int pack(FlatBufferBuilder builder, StructOfStructsT _o) {
+    if (_o == null) return 0;
+    int _a_id = (int) _o.getA().getId();
+    int _a_distance = (int) _o.getA().getDistance();
+    short _b_a = _o.getB().getA();
+    byte _b_b = _o.getB().getB();
+    int _c_id = (int) _o.getC().getId();
+    int _c_distance = (int) _o.getC().getDistance();
+    return createStructOfStructs(
+      builder,
+      _a_id,
+      _a_distance,
+      _b_a,
+      _b_b,
+      _c_id,
+      _c_distance);
   }
 }
 

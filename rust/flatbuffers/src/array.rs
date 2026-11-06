@@ -15,14 +15,11 @@
  */
 
 use crate::follow::Follow;
-use crate::{
-    vector::{SafeSliceAccess, VectorIter},
-    EndianScalar,
-};
-use std::fmt::{Debug, Formatter, Result};
-use std::marker::PhantomData;
-use std::mem::size_of;
-use std::slice::from_raw_parts;
+use crate::vector::VectorIter;
+use crate::EndianScalar;
+use core::fmt::{Debug, Formatter, Result};
+use core::marker::PhantomData;
+use core::mem::size_of;
 
 #[derive(Copy, Clone)]
 pub struct Array<'a, T: 'a, const N: usize>(&'a [u8], PhantomData<T>);
@@ -37,50 +34,53 @@ where
     }
 }
 
+#[allow(clippy::len_without_is_empty)]
+#[allow(clippy::from_over_into)] // TODO(caspern): Go from From to Into.
 impl<'a, T: 'a, const N: usize> Array<'a, T, N> {
+    /// # Safety
+    ///
+    /// buf must be a contiguous array of `T`
+    ///
+    /// # Panics
+    ///
+    /// Panics if `buf.len()` is not `size_of::<T>() * N`
     #[inline(always)]
-    pub fn new(buf: &'a [u8]) -> Self {
-        debug_assert!(size_of::<T>() * N == buf.len());
+    pub unsafe fn new(buf: &'a [u8]) -> Self {
+        assert_eq!(size_of::<T>() * N, buf.len());
 
-        Array {
-            0: buf,
-            1: PhantomData,
-        }
+        Array(buf, PhantomData)
     }
 
     #[inline(always)]
-    pub fn len(&self) -> usize {
+    pub const fn len(&self) -> usize {
         N
+    }
+    pub fn as_ptr(&self) -> *const u8 {
+        self.0.as_ptr()
     }
 }
 
 impl<'a, T: Follow<'a> + 'a, const N: usize> Array<'a, T, N> {
     #[inline(always)]
     pub fn get(&self, idx: usize) -> T::Inner {
-        debug_assert!(idx < N);
+        assert!(idx < N);
         let sz = size_of::<T>();
-        T::follow(self.0, sz * idx)
+        // Safety:
+        // self.0 was valid for length `N` on construction and have verified `idx < N`
+        unsafe { T::follow(self.0, sz * idx) }
     }
 
     #[inline(always)]
     pub fn iter(&self) -> VectorIter<'a, T> {
-        VectorIter::from_slice(self.0, self.len())
+        // Safety:
+        // self.0 was valid for length N on construction
+        unsafe { VectorIter::from_slice(self.0, self.len()) }
     }
 }
 
-impl<'a, T: Follow<'a> + Debug, const N: usize> Into<[T::Inner; N]> for Array<'a, T, N> {
-    #[inline(always)]
-    fn into(self) -> [T::Inner; N] {
-        array_init(|i| self.get(i))
-    }
-}
-
-impl<'a, T: SafeSliceAccess + 'a, const N: usize> Array<'a, T, N> {
-    pub fn safe_slice(self) -> &'a [T] {
-        let sz = size_of::<T>();
-        debug_assert!(sz > 0);
-        let ptr = self.0.as_ptr() as *const T;
-        unsafe { from_raw_parts(ptr, N) }
+impl<'a, T: Follow<'a> + Debug, const N: usize> From<Array<'a, T, N>> for [T::Inner; N] {
+    fn from(array: Array<'a, T, N>) -> Self {
+        array_init(|i| array.get(i))
     }
 }
 
@@ -88,23 +88,29 @@ impl<'a, T: SafeSliceAccess + 'a, const N: usize> Array<'a, T, N> {
 impl<'a, T: Follow<'a> + 'a, const N: usize> Follow<'a> for Array<'a, T, N> {
     type Inner = Array<'a, T, N>;
     #[inline(always)]
-    fn follow(buf: &'a [u8], loc: usize) -> Self::Inner {
+    unsafe fn follow(buf: &'a [u8], loc: usize) -> Self::Inner {
         Array::new(&buf[loc..loc + N * size_of::<T>()])
     }
 }
 
-pub fn emplace_scalar_array<T: EndianScalar, const N: usize>(
+/// Place an array of EndianScalar into the provided mutable byte slice. Performs
+/// endian conversion, if necessary.
+/// # Safety
+/// Caller must ensure `s.len() >= size_of::<[T; N]>()`
+pub unsafe fn emplace_scalar_array<T: EndianScalar, const N: usize>(
     buf: &mut [u8],
     loc: usize,
     src: &[T; N],
 ) {
-    let mut buf_ptr = buf[loc..].as_mut_ptr() as *mut T;
+    let mut buf_ptr = buf[loc..].as_mut_ptr();
     for item in src.iter() {
         let item_le = item.to_little_endian();
-        unsafe {
-            buf_ptr.write(item_le);
-            buf_ptr = buf_ptr.add(1);
-        }
+        core::ptr::copy_nonoverlapping(
+            &item_le as *const T::Scalar as *const u8,
+            buf_ptr,
+            size_of::<T::Scalar>(),
+        );
+        buf_ptr = buf_ptr.add(size_of::<T::Scalar>());
     }
 }
 
@@ -125,6 +131,8 @@ where
     let mut array: core::mem::MaybeUninit<[T; N]> = core::mem::MaybeUninit::uninit();
     let mut ptr_i = array.as_mut_ptr() as *mut T;
 
+    // Safety:
+    // array is aligned by T, and has length N
     unsafe {
         for i in 0..N {
             let value_i = initializer(i);
@@ -132,5 +140,24 @@ where
             ptr_i = ptr_i.add(1);
         }
         array.assume_init()
+    }
+}
+
+#[cfg(feature = "serialize")]
+impl<'a, T: 'a, const N: usize> serde::ser::Serialize for Array<'a, T, N>
+where
+    T: 'a + Follow<'a>,
+    <T as Follow<'a>>::Inner: serde::ser::Serialize,
+{
+    fn serialize<S>(&self, serializer: S) -> std::result::Result<S::Ok, S::Error>
+    where
+        S: serde::ser::Serializer,
+    {
+        use serde::ser::SerializeSeq;
+        let mut seq = serializer.serialize_seq(Some(self.len()))?;
+        for element in self.iter() {
+            seq.serialize_element(&element)?;
+        }
+        seq.end()
     }
 }

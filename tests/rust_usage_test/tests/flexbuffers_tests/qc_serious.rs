@@ -1,8 +1,10 @@
+use alloc::collections::BTreeMap;
+use alloc::string::String;
+use alloc::vec::Vec;
+
 use super::rwyw::NonNullString;
 use flexbuffers::*;
 use quickcheck::{Arbitrary, Gen};
-use serde::{Deserialize, Serialize};
-use std::collections::BTreeMap;
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 enum Enum {
@@ -23,11 +25,7 @@ enum Enum {
     String(String),
     Strings(String, String),
     Everything(u8, u16, u32, u64, i8, i16, i32, i64, f32, f64, String),
-    Arrays {
-        a: Array3<u16>,
-        b: Array4<i32>,
-        c: Array2<f64>,
-    },
+    Arrays { a: Array3<u16>, b: Array4<i32>, c: Array2<f64> },
     Blobs(#[serde(with = "serde_bytes")] Vec<u8>),
 }
 
@@ -124,22 +122,18 @@ impl<A: Arbitrary> Arbitrary for Array3<A> {
 }
 impl<A: Arbitrary> Arbitrary for Array4<A> {
     fn arbitrary<G: Gen>(g: &mut G) -> Self {
-        Array4([
-            A::arbitrary(g),
-            A::arbitrary(g),
-            A::arbitrary(g),
-            A::arbitrary(g),
-        ])
+        Array4([A::arbitrary(g), A::arbitrary(g), A::arbitrary(g), A::arbitrary(g)])
     }
 }
 
 quickcheck! {
-    fn qc_serious(x: Struct) -> bool {
-        let mut s = FlexbufferSerializer::new();
-        x.serialize(&mut s).unwrap();
-        let r = Reader::get_root(s.view()).unwrap();
-        println!("{}", r);
-        let x2 = Struct::deserialize(r).unwrap();
-        x == x2
+    fn qc_serious(original: Struct) -> bool {
+        let struct_buf = flexbuffers::to_vec(&original).unwrap();
+        let root = Reader::get_root(&*struct_buf).unwrap();
+        let reader_buf = flexbuffers::to_vec(&root).unwrap();
+        let deserialized: Struct = flexbuffers::from_slice(&struct_buf).unwrap();
+        let reserialized: Struct = flexbuffers::from_slice(&reader_buf).unwrap();
+
+        original == deserialized && original == reserialized
     }
 }

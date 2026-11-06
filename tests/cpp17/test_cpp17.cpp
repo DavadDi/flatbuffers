@@ -15,11 +15,12 @@
  */
 
 // This is a sandbox for modeling C++17 code generator.
-// C++17 code generator: "flatc --cpp_std c++17".
+// C++17 code generator: "flatc --cpp-std c++17".
 // Warning:
 // This is an experimental feature and could change at any time.
 
 #include "flatbuffers/flatbuffers.h"
+#include "flatbuffers/flex_flat_util.h"
 #include "flatbuffers/flexbuffers.h"
 #include "flatbuffers/idl.h"
 #include "flatbuffers/minireflect.h"
@@ -32,6 +33,7 @@
 namespace cpp17 {
 #include "generated_cpp17/monster_test_generated.h"
 #include "generated_cpp17/optional_scalars_generated.h"
+#include "generated_cpp17/union_vector_generated.h"
 }  // namespace cpp17
 
 namespace cpp11 {
@@ -45,22 +47,23 @@ using ::cpp17::MyGame::Example::Vec3;
 /*******************************************************************************
 ** Build some FB objects.
 *******************************************************************************/
-const Monster *BuildMonster(flatbuffers::FlatBufferBuilder &fbb) {
+namespace {
+const Monster* BuildMonster(flatbuffers::FlatBufferBuilder& fbb) {
   using ::cpp17::MyGame::Example::Color;
   using ::cpp17::MyGame::Example::MonsterBuilder;
   using ::cpp17::MyGame::Example::Test;
   auto name = fbb.CreateString("my_monster");
-  auto inventory = fbb.CreateVector(std::vector<uint8_t>{ 4, 5, 6, 7 });
+  auto inventory = fbb.CreateVector(std::vector<uint8_t>{4, 5, 6, 7});
   MonsterBuilder builder(fbb);
-  auto vec3 = Vec3{ /*x=*/1.1f,
-                    /*y=*/2.2f,
-                    /*z=*/3.3f,
-                    /*test1=*/6.6,
-                    /*test2=*/Color::Green,
-                    /*test3=*/
-                    Test(
-                        /*a=*/11,
-                        /*b=*/90) };
+  auto vec3 = Vec3{/*x=*/1.1f,
+                   /*y=*/2.2f,
+                   /*z=*/3.3f,
+                   /*test1=*/6.6,
+                   /*test2=*/Color::Green,
+                   /*test3=*/
+                   Test(
+                       /*a=*/11,
+                       /*b=*/90)};
   builder.add_pos(&vec3);
   builder.add_name(name);
   builder.add_mana(1);
@@ -82,7 +85,7 @@ const Monster *BuildMonster(flatbuffers::FlatBufferBuilder &fbb) {
   builder.add_non_owning_reference(17);
   builder.add_inventory(inventory);
   fbb.Finish(builder.Finish());
-  const Monster *monster =
+  const Monster* monster =
       flatbuffers::GetRoot<Monster>(fbb.GetBufferPointer());
   return monster;
 }
@@ -100,7 +103,7 @@ void StringifyAnyFlatbuffersTypeTest() {
   flatbuffers::FlatBufferBuilder fbb;
   // We are using a Monster here, but we could have used any type, because the
   // code that follows is totally generic!
-  const auto *monster = BuildMonster(fbb);
+  const auto* monster = BuildMonster(fbb);
 
   std::string expected = R"(MyGame.Example.Monster{
         pos = MyGame.Example.Vec3{
@@ -143,6 +146,16 @@ void StringifyAnyFlatbuffersTypeTest() {
         any_unique_type = 0
         any_ambiguous_type = 0
         signed_enum = -1
+        long_enum_non_enum_default = 0
+        long_enum_normal_default = 2
+        nan_default = nan
+        inf_default = inf
+        positive_inf_default = inf
+        infinity_default = inf
+        positive_infinity_default = inf
+        negative_inf_default = -inf
+        negative_infinity_default = -inf
+        double_inf_default = inf
       })";
 
   // Call a generic function that has no specific knowledge of the flatbuffer we
@@ -248,8 +261,9 @@ int FlatBufferCpp17Tests() {
   StringifyAnyFlatbuffersTypeTest();
   return 0;
 }
+}  // namespace
 
-int main(int /*argc*/, const char * /*argv*/[]) {
+int main(int /*argc*/, const char* /*argv*/[]) {
   InitTestEngine();
 
   FlatBufferCpp17Tests();

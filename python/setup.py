@@ -12,73 +12,54 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import fileinput
-import os
-import re
-import sys
-from datetime import datetime
+from pathlib import Path
+import shutil
+
 from setuptools import setup
 
 
-def _update_version_attr(new_version):
-    for line in fileinput.input('flatbuffers/_version.py', inplace=True):
-        if line.startswith('__version__'):
-            line = re.sub(r'".*"', '"{}"'.format(new_version), line)
-        sys.stdout.write(line)
+_THIS_DIR = Path(__file__).resolve().parent
+_ROOT_LICENSE = _THIS_DIR.parent / 'LICENSE'
+_LOCAL_LICENSE = _THIS_DIR / 'LICENSE'
 
 
-def version():
-    version = os.getenv('VERSION', None)
-    if version:
-        # Most git tags are prefixed with 'v' (example: v1.2.3) this is
-        # never desirable for artifact repositories, so we strip the
-        # leading 'v' if it's present.
-        version = version[1:] if version.startswith('v') else version
-    else:
-        # Default version is an ISO8601 compiliant datetime. PyPI doesn't allow
-        # the colon ':' character in its versions, and time is required to allow
-        # for multiple publications to master in one day. This datetime string
-        # uses the "basic" ISO8601 format for both its date and time components
-        # to avoid issues with the colon character (ISO requires that date and
-        # time components of a date-time string must be uniformly basic or
-        # extended, which is why the date component does not have dashes.
-        #
-        # Publications using datetime versions should only be made from master
-        # to represent the HEAD moving forward.
-        version = datetime.utcnow().strftime('%Y%m%d%H%M%S')
-        print("VERSION environment variable not set, using datetime instead: {}"
-              .format(version))
+def _stage_license_file():
+    if _LOCAL_LICENSE.exists() or not _ROOT_LICENSE.exists():
+        return False
+    shutil.copyfile(_ROOT_LICENSE, _LOCAL_LICENSE)
+    return True
 
-    _update_version_attr(version)
+_remove_staged_license = _stage_license_file()
 
-    return version
-
-
-setup(
-    name='flatbuffers',
-    version=version(),
-    license='Apache 2.0',
-    author='FlatBuffers Contributors',
-    author_email='me@rwinslow.com',
-    url='https://google.github.io/flatbuffers/',
-    long_description=('Python runtime library for use with the '
-                      '`Flatbuffers <https://google.github.io/flatbuffers/>`_ '
-                      'serialization format.'),
-    packages=['flatbuffers'],
-    include_package_data=True,
-    requires=[],
-    description='The FlatBuffers serialization format for Python',
-    classifiers=[
-        'Intended Audience :: Developers',
-        'License :: OSI Approved :: Apache Software License',
-        'Operating System :: OS Independent',
-        'Programming Language :: Python',
-        'Programming Language :: Python :: 2',
-        'Programming Language :: Python :: 3',
-        'Topic :: Software Development :: Libraries :: Python Modules',
-    ],
-    project_urls={
-        'Documentation': 'https://google.github.io/flatbuffers/',
-        'Source': 'https://github.com/google/flatbuffers',
-    },
-)
+try:
+    setup(
+        name='flatbuffers',
+        version='25.12.19',
+        license='Apache 2.0',
+        author='Derek Bailey',
+        author_email='derekbailey@google.com',
+        url='https://google.github.io/flatbuffers/',
+        long_description=(
+            'Python runtime library for use with the '
+            '`Flatbuffers <https://google.github.io/flatbuffers/>`_ '
+            'serialization format.'
+        ),
+        packages=['flatbuffers'],
+        include_package_data=True,
+        requires=[],
+        description='The FlatBuffers serialization format for Python',
+        classifiers=[
+            'Intended Audience :: Developers',
+            'Operating System :: OS Independent',
+            'Programming Language :: Python',
+            'Programming Language :: Python :: 3',
+            'Topic :: Software Development :: Libraries :: Python Modules',
+        ],
+        project_urls={
+            'Documentation': 'https://google.github.io/flatbuffers/',
+            'Source': 'https://github.com/google/flatbuffers',
+        },
+    )
+finally:
+    if _remove_staged_license and _LOCAL_LICENSE.exists():
+        _LOCAL_LICENSE.unlink()

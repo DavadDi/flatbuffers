@@ -57,16 +57,26 @@ except:
 class StructOfStructsT(object):
 
     # StructOfStructsT
-    def __init__(self):
-        self.a = None  # type: Optional[MyGame.Example.Ability.AbilityT]
-        self.b = None  # type: Optional[MyGame.Example.Test.TestT]
-        self.c = None  # type: Optional[MyGame.Example.Ability.AbilityT]
+    def __init__(
+        self,
+        a = None,
+        b = None,
+        c = None,
+    ):
+        self.a = a  # type: Optional[MyGame.Example.Ability.AbilityT]
+        self.b = b  # type: Optional[MyGame.Example.Test.TestT]
+        self.c = c  # type: Optional[MyGame.Example.Ability.AbilityT]
 
     @classmethod
     def InitFromBuf(cls, buf, pos):
         structOfStructs = StructOfStructs()
         structOfStructs.Init(buf, pos)
         return cls.InitFromObj(structOfStructs)
+
+    @classmethod
+    def InitFromPackedBuf(cls, buf, pos=0):
+        n = flatbuffers.encode.Get(flatbuffers.packer.uoffset, buf, pos)
+        return cls.InitFromBuf(buf, pos+n)
 
     @classmethod
     def InitFromObj(cls, structOfStructs):

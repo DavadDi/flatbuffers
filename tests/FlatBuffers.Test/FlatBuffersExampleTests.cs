@@ -1,4 +1,4 @@
-﻿/*
+/*
  * Copyright 2014 Google Inc. All rights reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -19,8 +19,9 @@ using System.Text;
 using System.Threading;
 using MyGame.Example;
 using optional_scalars;
+using KeywordTest;
 
-namespace FlatBuffers.Test
+namespace Google.FlatBuffers.Test
 {
     [FlatBuffersTestClass]
     public class FlatBuffersExampleTests
@@ -89,6 +90,9 @@ namespace FlatBuffers.Test
             fbb.AddOffset(test1.Value);
             var testArrayOfString = fbb.EndVector();
 
+            var longsVector = Monster.CreateVectorOfLongsVector(fbb, new long[] { 1, 100, 10000, 1000000, 100000000 });
+            var doublesVector = Monster.CreateVectorOfDoublesVector(fbb, new double[] { -1.7976931348623157e+308, 0, 1.7976931348623157e+308 });
+
             Monster.StartMonster(fbb);
             Monster.AddPos(fbb, Vec3.CreateVec3(fbb, 1.0f, 2.0f, 3.0f, 3.0,
                                                      Color.Green, (short)5, (sbyte)6));
@@ -101,6 +105,8 @@ namespace FlatBuffers.Test
             Monster.AddTestarrayofstring(fbb, testArrayOfString);
             Monster.AddTestbool(fbb, true);
             Monster.AddTestarrayoftables(fbb, sortMons);
+            Monster.AddVectorOfLongs(fbb, longsVector);
+            Monster.AddVectorOfDoubles(fbb, doublesVector);
             var mon = Monster.EndMonster(fbb);
 
             if (sizePrefix)
@@ -115,13 +121,13 @@ namespace FlatBuffers.Test
             // Dump to output directory so we can inspect later, if needed
             #if ENABLE_SPAN_T
             var data = fbb.DataBuffer.ToSizedArray();
-            string filename = @".tmp/monsterdata_cstest" + (sizePrefix ? "_sp" : "") + ".mon";
+            string filename = @"monsterdata_cstest" + (sizePrefix ? "_sp" : "") + ".mon";
             File.WriteAllBytes(filename, data);
             #else
             using (var ms = fbb.DataBuffer.ToMemoryStream(fbb.DataBuffer.Position, fbb.Offset))
             {
                 var data = ms.ToArray();
-                string filename = @".tmp/monsterdata_cstest" + (sizePrefix ? "_sp" : "") + ".mon";
+                string filename = @"monsterdata_cstest" + (sizePrefix ? "_sp" : "") + ".mon";
                 File.WriteAllBytes(filename, data);
             }
             #endif
@@ -155,8 +161,11 @@ namespace FlatBuffers.Test
 
             // Example of searching for a table by the key
             Assert.IsTrue(monster.TestarrayoftablesByKey("Frodo") != null);
+            Assert.AreEqual(monster.TestarrayoftablesByKey("Frodo").Value.Name, "Frodo");
             Assert.IsTrue(monster.TestarrayoftablesByKey("Barney") != null);
+            Assert.AreEqual(monster.TestarrayoftablesByKey("Barney").Value.Name, "Barney");
             Assert.IsTrue(monster.TestarrayoftablesByKey("Wilma") != null);
+            Assert.AreEqual(monster.TestarrayoftablesByKey("Wilma").Value.Name, "Wilma");
 
             // testType is an existing field
             Assert.AreEqual(monster.TestType, Any.Monster);
@@ -194,6 +203,9 @@ namespace FlatBuffers.Test
 
         private void TestBuffer(ByteBuffer bb)
         {
+            bool test = Monster.VerifyMonster(bb);
+            Assert.AreEqual(true, test);
+
             Monster monster = Monster.GetRootAsMonster(bb);
 
             Assert.AreEqual(80, monster.Hp);
@@ -261,10 +273,10 @@ namespace FlatBuffers.Test
             }
 
             var longArrayBytes = monster.GetVectorOfLongsBytes();
-            Assert.IsTrue(monster.VectorOfLongsLength * 8 == longArrayBytes.Length);
+            Assert.IsTrue(monster.VectorOfLongsLength == longArrayBytes.Length);
 
             var doubleArrayBytes = monster.GetVectorOfDoublesBytes();
-            Assert.IsTrue(monster.VectorOfDoublesLength * 8 == doubleArrayBytes.Length);
+            Assert.IsTrue(monster.VectorOfDoublesLength == doubleArrayBytes.Length);
             #else
             var nameBytes = monster.GetNameBytes().Value;
             Assert.AreEqual("MyMonster", Encoding.UTF8.GetString(nameBytes.Array, nameBytes.Offset, nameBytes.Count));
@@ -278,12 +290,19 @@ namespace FlatBuffers.Test
                 Assert.IsTrue(monster.GetTestarrayofboolsBytes().HasValue);
             }
             #endif
+
+            var longArray = monster.GetVectorOfLongsArray();
+            Assert.AreEqual(5, longArray.Length);
+            Assert.AreEqual(100, longArray[1]);
+
+            var doublesArray = monster.GetVectorOfDoublesArray();
+            Assert.AreEqual(3, doublesArray.Length);
         }
 
         [FlatBuffersTestMethod]
         public void CanReadCppGeneratedWireFile()
         {
-            var data = File.ReadAllBytes(@"../monsterdata_test.mon");
+            var data = File.ReadAllBytes(@"monsterdata_test.mon");
             var bb = new ByteBuffer(data);
             TestBuffer(bb);
             TestObjectAPI(Monster.GetRootAsMonster(bb));
@@ -292,10 +311,10 @@ namespace FlatBuffers.Test
         [FlatBuffersTestMethod]
         public void CanReadJsonFile()
         {
-            var jsonText = File.ReadAllText(@"../monsterdata_test.json");
+            var jsonText = File.ReadAllText(@"monsterdata_test.json");
             var mon = MonsterT.DeserializeFromJson(jsonText);
             var fbb = new FlatBufferBuilder(1);
-            fbb.Finish(Monster.Pack(fbb, mon).Value);
+            Monster.FinishMonsterBuffer(fbb, Monster.Pack(fbb, mon));
             TestBuffer(fbb.DataBuffer);
         }
 
@@ -486,6 +505,26 @@ namespace FlatBuffers.Test
             Assert.AreEqual("Chip", movie.CharactersAsString(2));
 
             TestObjectAPI(movie);
+        }
+
+        [FlatBuffersTestMethod]
+        public void TestUnionUtility()
+        {
+            var movie = new MovieT
+            {
+                MainCharacter = CharacterUnion.FromRapunzel(new RapunzelT { HairLength = 40 }),
+                Characters = new System.Collections.Generic.List<CharacterUnion>
+                {
+                    CharacterUnion.FromMuLan(new AttackerT { SwordAttackDamage = 10 }),
+                    CharacterUnion.FromBelle(new BookReaderT { BooksRead = 20 }),
+                    CharacterUnion.FromOther("Chip"),
+                },
+            };
+
+            var fbb = new FlatBufferBuilder(100);
+            Movie.FinishMovieBuffer(fbb, Movie.Pack(fbb, movie));
+
+            TestObjectAPI(Movie.GetRootAsMovie(fbb.DataBuffer));
         }
 
         private void AreEqual(Monster a, MonsterT b)
@@ -1096,6 +1135,106 @@ namespace FlatBuffers.Test
             Assert.AreEqual(OptionalByte.Two, scalarStuff.JustEnum);
             Assert.AreEqual(OptionalByte.Two, scalarStuff.MaybeEnum);
             Assert.AreEqual(OptionalByte.Two, scalarStuff.DefaultEnum);
+        }
+
+
+        [FlatBuffersTestMethod]
+        public void TestKeywordEscaping() {
+            Assert.AreEqual((int)KeywordTest.@public.NONE, 0);
+
+            Assert.AreEqual((int)KeywordTest.ABC.@void, 0);
+            Assert.AreEqual((int)KeywordTest.ABC.where, 1);
+            Assert.AreEqual((int)KeywordTest.ABC.@stackalloc, 2);
+
+            var fbb = new FlatBufferBuilder(1);
+            var offset = KeywordsInTable.CreateKeywordsInTable(
+                fbb, KeywordTest.ABC.@stackalloc, KeywordTest.@public.NONE);
+            fbb.Finish(offset.Value);
+ 
+            KeywordsInTable keywordsInTable = 
+                KeywordsInTable.GetRootAsKeywordsInTable(fbb.DataBuffer);
+
+            Assert.AreEqual(keywordsInTable.Is, KeywordTest.ABC.@stackalloc);
+            Assert.AreEqual(keywordsInTable.Private, KeywordTest.@public.NONE);
+        }
+
+
+        [FlatBuffersTestMethod]
+        public void AddOptionalEnum_WhenPassNull_ShouldWorkProperly() {
+          var fbb = new FlatBufferBuilder(1);
+          ScalarStuff.StartScalarStuff(fbb);
+          ScalarStuff.AddMaybeEnum(fbb, null);
+          var offset = ScalarStuff.EndScalarStuff(fbb);
+          ScalarStuff.FinishScalarStuffBuffer(fbb, offset);
+          
+          ScalarStuff scalarStuff = ScalarStuff.GetRootAsScalarStuff(fbb.DataBuffer);
+          Assert.AreEqual(null, scalarStuff.MaybeEnum);
+        }
+
+
+        [FlatBuffersTestMethod]
+        public void SortKey_WithDefaultedValue_IsFindable() {
+            // This checks if using the `key` attribute that includes the
+            // default value (e.g., 0) is still searchable. This is a regression
+            // test for https://github.com/google/flatbuffers/issues/7380.
+            var fbb = new FlatBufferBuilder(1);
+
+            // Create a vector of Stat objects, with Count being the key. 
+            var stat_offsets = new Offset<Stat>[4];
+            for(ushort i = 0; i < stat_offsets.Length; i++) {
+                Stat.StartStat(fbb);
+                Stat.AddCount(fbb, i);
+                stat_offsets[stat_offsets.Length - 1 - i] = Stat.EndStat(fbb);
+            }
+
+            // Ensure the sort works.
+            var sort = Stat.CreateSortedVectorOfStat(fbb, stat_offsets);
+
+            // Create the monster with the sorted vector of Stat objects.
+            var str = fbb.CreateString("MyMonster");
+            Monster.StartMonster(fbb);
+            Monster.AddName(fbb, str);
+            Monster.AddScalarKeySortedTables(fbb, sort);
+            fbb.Finish(Monster.EndMonster(fbb).Value);
+
+            // Get the monster.
+            var monster = Monster.GetRootAsMonster(fbb.DataBuffer);
+
+            // Ensure each key is findable.
+            for(ushort i =0 ; i < stat_offsets.Length; i++) {
+                Assert.IsTrue(monster.ScalarKeySortedTablesByKey(i) != null);
+                Assert.AreEqual(monster.ScalarKeySortedTablesByKey(i).Value.Count, i);
+            }
+        }
+
+        [FlatBuffersTestMethod]
+        public void TestVerifyingUnions()
+        {
+            var fbb = new FlatBufferBuilder(1);
+            var name_inner = fbb.CreateString("inner");
+            var name_outer = fbb.CreateString("outer");
+            Monster.StartMonster(fbb);
+            Monster.AddName(fbb, name_inner);
+            var monster_inner = Monster.EndMonster(fbb);
+            Monster.StartMonster(fbb);
+            Monster.AddName(fbb, name_outer);
+            Monster.AddTest(fbb, monster_inner.Value);
+            Monster.AddTestType(fbb, Any.Monster);
+            var monster_outer = Monster.EndMonster(fbb);
+            fbb.Finish(monster_outer.Value);
+            var bytes = fbb.SizedByteArray();
+            var bytes_to_corrupt_inner_name = fbb.SizedByteArray();
+            var bytes_to_corrupt_outer_name = fbb.SizedByteArray();
+
+            bytes_to_corrupt_inner_name[bytes.Length - name_inner.Value] = 0xFF;
+            bytes_to_corrupt_outer_name[bytes.Length - name_outer.Value] = 0xFF;
+            var valid = Monster.VerifyMonster(new ByteBuffer(bytes));
+            var valid_after_inner_corrupt = Monster.VerifyMonster(new ByteBuffer(bytes_to_corrupt_inner_name));
+            var valid_after_outer_corrupt = Monster.VerifyMonster(new ByteBuffer(bytes_to_corrupt_outer_name));
+
+            Assert.IsTrue(valid);
+            Assert.IsFalse(valid_after_inner_corrupt);
+            Assert.IsFalse(valid_after_outer_corrupt);
         }
     }
 }

@@ -16,6 +16,9 @@
 #include <grpcpp/impl/codegen/status.h>
 #include <grpcpp/impl/codegen/stub_options.h>
 #include <grpcpp/impl/codegen/sync_stream.h>
+#include <grpcpp/impl/codegen/callback_common.h>
+#include <grpcpp/impl/codegen/server_callback_handlers.h>
+#include <grpcpp/support/client_callback.h>
 
 namespace grpc {
 class CompletionQueue;
@@ -81,11 +84,16 @@ class MonsterStorage final {
     virtual ::grpc::ClientReaderWriterInterface< flatbuffers::grpc::Message<Monster>, flatbuffers::grpc::Message<Stat>>* GetMinMaxHitPointsRaw(::grpc::ClientContext* context) = 0;
     virtual ::grpc::ClientAsyncReaderWriterInterface< flatbuffers::grpc::Message<Monster>, flatbuffers::grpc::Message<Stat>>* AsyncGetMinMaxHitPointsRaw(::grpc::ClientContext* context, ::grpc::CompletionQueue* cq, void* tag) = 0;
     virtual ::grpc::ClientAsyncReaderWriterInterface< flatbuffers::grpc::Message<Monster>, flatbuffers::grpc::Message<Stat>>* PrepareAsyncGetMinMaxHitPointsRaw(::grpc::ClientContext* context, ::grpc::CompletionQueue* cq) = 0;
+  class CallbackService;
   };
   class Stub final : public StubInterface {
    public:
     Stub(const std::shared_ptr< ::grpc::ChannelInterface>& channel);
     ::grpc::Status Store(::grpc::ClientContext* context, const flatbuffers::grpc::Message<Monster>& request, flatbuffers::grpc::Message<Stat>* response) override;
+    // Callback unary (function form). Request/response must outlive callback.
+    void async_Store(::grpc::ClientContext* context, const flatbuffers::grpc::Message<Monster>& request, flatbuffers::grpc::Message<Stat>* response, std::function<void(::grpc::Status)> on_done);
+    // Callback unary (reactor form).
+    void async_Store(::grpc::ClientContext* context, const flatbuffers::grpc::Message<Monster>& request, flatbuffers::grpc::Message<Stat>* response, ::grpc::ClientUnaryReactor* reactor);
     std::unique_ptr< ::grpc::ClientAsyncResponseReader< flatbuffers::grpc::Message<Stat>>> AsyncStore(::grpc::ClientContext* context, const flatbuffers::grpc::Message<Monster>& request, ::grpc::CompletionQueue* cq) {
       return std::unique_ptr< ::grpc::ClientAsyncResponseReader< flatbuffers::grpc::Message<Stat>>>(AsyncStoreRaw(context, request, cq));
     }
@@ -95,6 +103,8 @@ class MonsterStorage final {
     std::unique_ptr< ::grpc::ClientReader< flatbuffers::grpc::Message<Monster>>> Retrieve(::grpc::ClientContext* context, const flatbuffers::grpc::Message<Stat>& request) {
       return std::unique_ptr< ::grpc::ClientReader< flatbuffers::grpc::Message<Monster>>>(RetrieveRaw(context, request));
     }
+    // Server streaming callback reactor entry.
+    void async_Retrieve(::grpc::ClientContext* context, const flatbuffers::grpc::Message<Stat>& request, ::grpc::ClientReadReactor< flatbuffers::grpc::Message<Monster> >* reactor);
     std::unique_ptr< ::grpc::ClientAsyncReader< flatbuffers::grpc::Message<Monster>>> AsyncRetrieve(::grpc::ClientContext* context, const flatbuffers::grpc::Message<Stat>& request, ::grpc::CompletionQueue* cq, void* tag) {
       return std::unique_ptr< ::grpc::ClientAsyncReader< flatbuffers::grpc::Message<Monster>>>(AsyncRetrieveRaw(context, request, cq, tag));
     }
@@ -104,6 +114,8 @@ class MonsterStorage final {
     std::unique_ptr< ::grpc::ClientWriter< flatbuffers::grpc::Message<Monster>>> GetMaxHitPoint(::grpc::ClientContext* context, flatbuffers::grpc::Message<Stat>* response) {
       return std::unique_ptr< ::grpc::ClientWriter< flatbuffers::grpc::Message<Monster>>>(GetMaxHitPointRaw(context, response));
     }
+    // Client streaming callback reactor entry.
+    void async_GetMaxHitPoint(::grpc::ClientContext* context, flatbuffers::grpc::Message<Stat>* response, ::grpc::ClientWriteReactor< flatbuffers::grpc::Message<Monster> >* reactor);
     std::unique_ptr< ::grpc::ClientAsyncWriter< flatbuffers::grpc::Message<Monster>>> AsyncGetMaxHitPoint(::grpc::ClientContext* context, flatbuffers::grpc::Message<Stat>* response, ::grpc::CompletionQueue* cq, void* tag) {
       return std::unique_ptr< ::grpc::ClientAsyncWriter< flatbuffers::grpc::Message<Monster>>>(AsyncGetMaxHitPointRaw(context, response, cq, tag));
     }
@@ -113,6 +125,8 @@ class MonsterStorage final {
     std::unique_ptr< ::grpc::ClientReaderWriter< flatbuffers::grpc::Message<Monster>, flatbuffers::grpc::Message<Stat>>> GetMinMaxHitPoints(::grpc::ClientContext* context) {
       return std::unique_ptr< ::grpc::ClientReaderWriter< flatbuffers::grpc::Message<Monster>, flatbuffers::grpc::Message<Stat>>>(GetMinMaxHitPointsRaw(context));
     }
+    // Bidirectional streaming callback reactor entry.
+    void async_GetMinMaxHitPoints(::grpc::ClientContext* context, ::grpc::ClientBidiReactor< flatbuffers::grpc::Message<Monster>, flatbuffers::grpc::Message<Stat> >* reactor);
     std::unique_ptr<  ::grpc::ClientAsyncReaderWriter< flatbuffers::grpc::Message<Monster>, flatbuffers::grpc::Message<Stat>>> AsyncGetMinMaxHitPoints(::grpc::ClientContext* context, ::grpc::CompletionQueue* cq, void* tag) {
       return std::unique_ptr< ::grpc::ClientAsyncReaderWriter< flatbuffers::grpc::Message<Monster>, flatbuffers::grpc::Message<Stat>>>(AsyncGetMinMaxHitPointsRaw(context, cq, tag));
     }
@@ -152,7 +166,7 @@ class MonsterStorage final {
   template <class BaseClass>
   class WithAsyncMethod_Store : public BaseClass {
    private:
-    void BaseClassMustBeDerivedFromService(const Service *service) {}
+    void BaseClassMustBeDerivedFromService(const Service */*service*/) {}
    public:
     WithAsyncMethod_Store() {
       ::grpc::Service::MarkMethodAsync(0);
@@ -161,7 +175,7 @@ class MonsterStorage final {
       BaseClassMustBeDerivedFromService(this);
     }
     // disable synchronous version of this method
-    ::grpc::Status Store(::grpc::ServerContext* context, const flatbuffers::grpc::Message<Monster>* request, flatbuffers::grpc::Message<Stat>* response) final override {
+    ::grpc::Status Store(::grpc::ServerContext* /*context*/, const flatbuffers::grpc::Message<Monster>* /*request*/, flatbuffers::grpc::Message<Stat>* /*response*/) final override {
       abort();
       return ::grpc::Status(::grpc::StatusCode::UNIMPLEMENTED, "");
     }
@@ -172,7 +186,7 @@ class MonsterStorage final {
   template <class BaseClass>
   class WithAsyncMethod_Retrieve : public BaseClass {
    private:
-    void BaseClassMustBeDerivedFromService(const Service *service) {}
+    void BaseClassMustBeDerivedFromService(const Service */*service*/) {}
    public:
     WithAsyncMethod_Retrieve() {
       ::grpc::Service::MarkMethodAsync(1);
@@ -181,7 +195,7 @@ class MonsterStorage final {
       BaseClassMustBeDerivedFromService(this);
     }
     // disable synchronous version of this method
-    ::grpc::Status Retrieve(::grpc::ServerContext* context, const flatbuffers::grpc::Message<Stat>* request, ::grpc::ServerWriter< flatbuffers::grpc::Message<Monster>>* writer) final override {
+    ::grpc::Status Retrieve(::grpc::ServerContext* /*context*/, const flatbuffers::grpc::Message<Stat>* /*request*/, ::grpc::ServerWriter< flatbuffers::grpc::Message<Monster>>* /*writer*/) final override {
       abort();
       return ::grpc::Status(::grpc::StatusCode::UNIMPLEMENTED, "");
     }
@@ -192,7 +206,7 @@ class MonsterStorage final {
   template <class BaseClass>
   class WithAsyncMethod_GetMaxHitPoint : public BaseClass {
    private:
-    void BaseClassMustBeDerivedFromService(const Service *service) {}
+    void BaseClassMustBeDerivedFromService(const Service */*service*/) {}
    public:
     WithAsyncMethod_GetMaxHitPoint() {
       ::grpc::Service::MarkMethodAsync(2);
@@ -201,7 +215,7 @@ class MonsterStorage final {
       BaseClassMustBeDerivedFromService(this);
     }
     // disable synchronous version of this method
-    ::grpc::Status GetMaxHitPoint(::grpc::ServerContext* context, ::grpc::ServerReader< flatbuffers::grpc::Message<Monster>>* reader, flatbuffers::grpc::Message<Stat>* response) final override {
+    ::grpc::Status GetMaxHitPoint(::grpc::ServerContext* /*context*/, ::grpc::ServerReader< flatbuffers::grpc::Message<Monster>>* /*reader*/, flatbuffers::grpc::Message<Stat>* /*response*/) final override {
       abort();
       return ::grpc::Status(::grpc::StatusCode::UNIMPLEMENTED, "");
     }
@@ -212,7 +226,7 @@ class MonsterStorage final {
   template <class BaseClass>
   class WithAsyncMethod_GetMinMaxHitPoints : public BaseClass {
    private:
-    void BaseClassMustBeDerivedFromService(const Service *service) {}
+    void BaseClassMustBeDerivedFromService(const Service */*service*/) {}
    public:
     WithAsyncMethod_GetMinMaxHitPoints() {
       ::grpc::Service::MarkMethodAsync(3);
@@ -221,7 +235,7 @@ class MonsterStorage final {
       BaseClassMustBeDerivedFromService(this);
     }
     // disable synchronous version of this method
-    ::grpc::Status GetMinMaxHitPoints(::grpc::ServerContext* context, ::grpc::ServerReaderWriter< flatbuffers::grpc::Message<Stat>, flatbuffers::grpc::Message<Monster>>* stream) final override {
+    ::grpc::Status GetMinMaxHitPoints(::grpc::ServerContext* /*context*/, ::grpc::ServerReaderWriter< flatbuffers::grpc::Message<Stat>, flatbuffers::grpc::Message<Monster>>* /*stream*/) final override {
       abort();
       return ::grpc::Status(::grpc::StatusCode::UNIMPLEMENTED, "");
     }
@@ -233,7 +247,7 @@ class MonsterStorage final {
   template <class BaseClass>
   class WithGenericMethod_Store : public BaseClass {
    private:
-    void BaseClassMustBeDerivedFromService(const Service *service) {}
+    void BaseClassMustBeDerivedFromService(const Service */*service*/) {}
    public:
     WithGenericMethod_Store() {
       ::grpc::Service::MarkMethodGeneric(0);
@@ -242,7 +256,7 @@ class MonsterStorage final {
       BaseClassMustBeDerivedFromService(this);
     }
     // disable synchronous version of this method
-    ::grpc::Status Store(::grpc::ServerContext* context, const flatbuffers::grpc::Message<Monster>* request, flatbuffers::grpc::Message<Stat>* response) final override {
+    ::grpc::Status Store(::grpc::ServerContext* /*context*/, const flatbuffers::grpc::Message<Monster>* /*request*/, flatbuffers::grpc::Message<Stat>* /*response*/) final override {
       abort();
       return ::grpc::Status(::grpc::StatusCode::UNIMPLEMENTED, "");
     }
@@ -250,7 +264,7 @@ class MonsterStorage final {
   template <class BaseClass>
   class WithGenericMethod_Retrieve : public BaseClass {
    private:
-    void BaseClassMustBeDerivedFromService(const Service *service) {}
+    void BaseClassMustBeDerivedFromService(const Service */*service*/) {}
    public:
     WithGenericMethod_Retrieve() {
       ::grpc::Service::MarkMethodGeneric(1);
@@ -259,7 +273,7 @@ class MonsterStorage final {
       BaseClassMustBeDerivedFromService(this);
     }
     // disable synchronous version of this method
-    ::grpc::Status Retrieve(::grpc::ServerContext* context, const flatbuffers::grpc::Message<Stat>* request, ::grpc::ServerWriter< flatbuffers::grpc::Message<Monster>>* writer) final override {
+    ::grpc::Status Retrieve(::grpc::ServerContext* /*context*/, const flatbuffers::grpc::Message<Stat>* /*request*/, ::grpc::ServerWriter< flatbuffers::grpc::Message<Monster>>* /*writer*/) final override {
       abort();
       return ::grpc::Status(::grpc::StatusCode::UNIMPLEMENTED, "");
     }
@@ -267,7 +281,7 @@ class MonsterStorage final {
   template <class BaseClass>
   class WithGenericMethod_GetMaxHitPoint : public BaseClass {
    private:
-    void BaseClassMustBeDerivedFromService(const Service *service) {}
+    void BaseClassMustBeDerivedFromService(const Service */*service*/) {}
    public:
     WithGenericMethod_GetMaxHitPoint() {
       ::grpc::Service::MarkMethodGeneric(2);
@@ -276,7 +290,7 @@ class MonsterStorage final {
       BaseClassMustBeDerivedFromService(this);
     }
     // disable synchronous version of this method
-    ::grpc::Status GetMaxHitPoint(::grpc::ServerContext* context, ::grpc::ServerReader< flatbuffers::grpc::Message<Monster>>* reader, flatbuffers::grpc::Message<Stat>* response) final override {
+    ::grpc::Status GetMaxHitPoint(::grpc::ServerContext* /*context*/, ::grpc::ServerReader< flatbuffers::grpc::Message<Monster>>* /*reader*/, flatbuffers::grpc::Message<Stat>* /*response*/) final override {
       abort();
       return ::grpc::Status(::grpc::StatusCode::UNIMPLEMENTED, "");
     }
@@ -284,7 +298,7 @@ class MonsterStorage final {
   template <class BaseClass>
   class WithGenericMethod_GetMinMaxHitPoints : public BaseClass {
    private:
-    void BaseClassMustBeDerivedFromService(const Service *service) {}
+    void BaseClassMustBeDerivedFromService(const Service */*service*/) {}
    public:
     WithGenericMethod_GetMinMaxHitPoints() {
       ::grpc::Service::MarkMethodGeneric(3);
@@ -293,7 +307,7 @@ class MonsterStorage final {
       BaseClassMustBeDerivedFromService(this);
     }
     // disable synchronous version of this method
-    ::grpc::Status GetMinMaxHitPoints(::grpc::ServerContext* context, ::grpc::ServerReaderWriter< flatbuffers::grpc::Message<Stat>, flatbuffers::grpc::Message<Monster>>* stream) final override {
+    ::grpc::Status GetMinMaxHitPoints(::grpc::ServerContext* /*context*/, ::grpc::ServerReaderWriter< flatbuffers::grpc::Message<Stat>, flatbuffers::grpc::Message<Monster>>* /*stream*/) final override {
       abort();
       return ::grpc::Status(::grpc::StatusCode::UNIMPLEMENTED, "");
     }
@@ -301,7 +315,7 @@ class MonsterStorage final {
   template <class BaseClass>
   class WithStreamedUnaryMethod_Store : public BaseClass {
    private:
-    void BaseClassMustBeDerivedFromService(const Service *service) {}
+    void BaseClassMustBeDerivedFromService(const Service */*service*/) {}
    public:
     WithStreamedUnaryMethod_Store() {
       ::grpc::Service::MarkMethodStreamed(0,
@@ -311,7 +325,7 @@ class MonsterStorage final {
       BaseClassMustBeDerivedFromService(this);
     }
     // disable regular version of this method
-    ::grpc::Status Store(::grpc::ServerContext* context, const flatbuffers::grpc::Message<Monster>* request, flatbuffers::grpc::Message<Stat>* response) final override {
+    ::grpc::Status Store(::grpc::ServerContext* /*context*/, const flatbuffers::grpc::Message<Monster>* /*request*/, flatbuffers::grpc::Message<Stat>* /*response*/) final override {
       abort();
       return ::grpc::Status(::grpc::StatusCode::UNIMPLEMENTED, "");
     }
@@ -322,7 +336,7 @@ class MonsterStorage final {
   template <class BaseClass>
   class WithSplitStreamingMethod_Retrieve : public BaseClass {
    private:
-    void BaseClassMustBeDerivedFromService(const Service *service) {}
+    void BaseClassMustBeDerivedFromService(const Service */*service*/) { }
    public:
     WithSplitStreamingMethod_Retrieve() {
       ::grpc::Service::MarkMethodStreamed(1,
@@ -332,7 +346,7 @@ class MonsterStorage final {
       BaseClassMustBeDerivedFromService(this);
     }
     // disable regular version of this method
-    ::grpc::Status Retrieve(::grpc::ServerContext* context, const flatbuffers::grpc::Message<Stat>* request, ::grpc::ServerWriter< flatbuffers::grpc::Message<Monster>>* writer) final override {
+    ::grpc::Status Retrieve(::grpc::ServerContext* /*context*/, const flatbuffers::grpc::Message<Stat>* /*request*/, ::grpc::ServerWriter< flatbuffers::grpc::Message<Monster>>* /*writer*/) final override {
       abort();
       return ::grpc::Status(::grpc::StatusCode::UNIMPLEMENTED, "");
     }
@@ -342,6 +356,23 @@ class MonsterStorage final {
   typedef   WithSplitStreamingMethod_Retrieve<  Service   >   SplitStreamedService;
   typedef   WithStreamedUnaryMethod_Store<  WithSplitStreamingMethod_Retrieve<  Service   >   >   StreamedService;
 };
+
+#if defined(GRPC_CALLBACK_API_NONEXPERIMENTAL)
+class MonsterStorage::CallbackService : public ::grpc::Service {
+ public:
+  CallbackService();
+  virtual ~CallbackService();
+  virtual ::grpc::ServerUnaryReactor* Store(::grpc::CallbackServerContext* context, const flatbuffers::grpc::Message<Monster>* request, flatbuffers::grpc::Message<Stat>* response);
+  virtual ::grpc::ServerWriteReactor<flatbuffers::grpc::Message<Monster>>* Retrieve(::grpc::CallbackServerContext* context, const flatbuffers::grpc::Message<Stat>* request);
+  virtual ::grpc::ServerReadReactor<flatbuffers::grpc::Message<Monster>>* GetMaxHitPoint(::grpc::CallbackServerContext* context, flatbuffers::grpc::Message<Stat>* response);
+  virtual ::grpc::ServerBidiReactor<flatbuffers::grpc::Message<Monster>, flatbuffers::grpc::Message<Stat>>* GetMinMaxHitPoints(::grpc::CallbackServerContext* context);
+};
+#else
+// Callback API requested but not available in this gRPC version.
+#endif // GRPC_CALLBACK_API_NONEXPERIMENTAL
+
+// FlatBuffers: Callback API code generated.
+#define FLATBUFFERS_GENERATED_GRPC_CALLBACK_API 1
 
 }  // namespace Example
 }  // namespace MyGame
